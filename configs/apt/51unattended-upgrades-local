@@ -1,0 +1,3 @@
+// /etc/apt/apt.conf.d/51unattended-upgrades-local
+// Lu apres 50unattended-upgrades (ordre alphabetique) : remplace ce seul parametre.
+Unattended-Upgrade::OnlyOnACPower "false";
