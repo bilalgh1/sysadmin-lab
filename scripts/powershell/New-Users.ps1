@@ -1,33 +1,33 @@
-# New-Users.ps1 - Creation d'utilisateurs AD a partir d'un CSV
+# New-Users.ps1 - Create Active Directory users from a CSV file
 #
-# Usage : .\New-Users.ps1
-# CSV attendu (C:\Scripts\users.csv) : Prenom,Nom,Service
-# Le service doit correspondre a une OU sous OU=Utilisateurs et a un groupe GG_<Service>.
+# Usage   : .\New-Users.ps1
+# CSV     : C:\Scripts\users.csv with columns FirstName,LastName,Department
+#           Department must match an OU under OU=Utilisateurs and a GG_<Department> group.
 #
-# - Le mot de passe initial est demande a l'execution, jamais stocke.
-# - L'utilisateur doit le changer a sa premiere connexion.
-# - Idempotent : un compte existant est ignore.
+# - The initial password is prompted at runtime and never stored.
+# - Users must change it at first logon.
+# - Idempotent: existing accounts are skipped.
 
 $root     = "OU=COMPANY,DC=company,DC=local"
 $csvPath  = "C:\Scripts\users.csv"
-$password = Read-Host "Mot de passe initial" -AsSecureString
+$password = Read-Host "Initial password" -AsSecureString
 
 Import-Csv $csvPath | ForEach-Object {
-    $sam = ($_.Prenom + "." + $_.Nom).ToLower()
+    $sam = ($_.FirstName + "." + $_.LastName).ToLower()
 
     if (Get-ADUser -Filter "SamAccountName -eq '$sam'") {
-        Write-Warning "$sam existe deja, ignore"
+        Write-Warning "$sam already exists, skipped"
         return
     }
 
     $params = @{
-        Name                  = "$($_.Prenom) $($_.Nom)"
-        GivenName             = $_.Prenom
-        Surname               = $_.Nom
+        Name                  = "$($_.FirstName) $($_.LastName)"
+        GivenName             = $_.FirstName
+        Surname               = $_.LastName
         SamAccountName        = $sam
         UserPrincipalName     = "$sam@company.local"
-        Path                  = "OU=$($_.Service),OU=Utilisateurs,$root"
-        Department            = $_.Service
+        Path                  = "OU=$($_.Department),OU=Utilisateurs,$root"
+        Department            = $_.Department
         AccountPassword       = $password
         ChangePasswordAtLogon = $true
         Enabled               = $true
@@ -36,9 +36,9 @@ Import-Csv $csvPath | ForEach-Object {
     try {
         New-ADUser @params -ErrorAction Stop
         Add-ADGroupMember -Identity "GG_$($params.Department)" -Members $sam -ErrorAction Stop
-        Write-Host "Cree : $sam ($($params.Department))"
+        Write-Host "Created: $sam ($($params.Department))"
     }
     catch {
-        Write-Warning "ECHEC pour $sam : $($_.Exception.Message)"
+        Write-Warning "FAILED for $sam : $($_.Exception.Message)"
     }
 }

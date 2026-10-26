@@ -1,17 +1,17 @@
-# Windows 1 — Active Directory : OU, groupes, AGDLP
+# Windows 1 — Active Directory: OUs, groups, AGDLP
 
-Domaine `company.local`, vierge au départ (seuls `Administrator`, `Guest`, `krbtgt` et l'OU `Domain Controllers`).
+Domain `company.local`, empty at the start (only `Administrator`, `Guest`, `krbtgt` and the `Domain Controllers` OU).
 
-## OU ou groupe ?
+## OU or group?
 
-| | OU | Groupe |
+| | OU | Group |
 |---|---|---|
-| Sert à | Ranger, lier des GPO, déléguer l'administration | Donner des permissions |
-| Un objet peut être dans | Une seule OU | Plusieurs groupes |
+| Used to | Organize, link GPOs, delegate administration | Grant permissions |
+| An object can be in | A single OU | Several groups |
 
-Les conteneurs par défaut `Users` et `Computers` ne sont pas des OU : aucune GPO ne peut y être liée.
+The default `Users` and `Computers` containers are not OUs: no GPO can be linked to them.
 
-## Arborescence
+## OU tree
 
 ```powershell
 New-ADOrganizationalUnit -Name "COMPANY" -Path "DC=company,DC=local"
@@ -21,13 +21,13 @@ $root = "OU=COMPANY,DC=company,DC=local"
 "Postes","Serveurs" | ForEach-Object { New-ADOrganizationalUnit -Name $_ -Path "OU=Ordinateurs,$root" }
 ```
 
-Les OU créées ainsi sont protégées contre la suppression accidentelle.
+OUs created this way are protected from accidental deletion.
 
 ## AGDLP
 
 ```
 Accounts → Global groups → Domain Local groups → Permissions
- alice   →   GG_Compta   → DL_Partage-Compta_RW → Modifier sur \\DC\Partages\Compta
+ alice   →   GG_Compta   → DL_Partage-Compta_RW → Modify on \\DC\Partages\Compta
 ```
 
 ```powershell
@@ -37,31 +37,31 @@ Add-ADGroupMember -Identity "DL_Partage-Compta_RW" -Members "GG_Compta"
 Add-ADGroupMember -Identity "DL_Partage-RH_RW" -Members "GG_RH"
 ```
 
-**Pourquoi ne jamais donner de permission directement à un utilisateur ?** Chaque arrivée, départ ou changement de poste obligerait à retoucher les permissions de toutes les ressources, avec un risque d'oubli (accumulation de privilèges), et « qui a accès à quoi » deviendrait illisible. Avec AGDLP, seule l'appartenance aux groupes change.
+**Why never grant a permission directly to a user?** Every arrival, departure or role change would require editing the permissions of every resource, with a high risk of leftovers (privilege creep), and "who has access to what" would become unreadable. With AGDLP, only group membership changes.
 
-## Création des utilisateurs
+## User creation
 
-Script : [`scripts/powershell/New-Users.ps1`](../scripts/powershell/New-Users.ps1), CSV : [`users.example.csv`](../scripts/powershell/users.example.csv).
+Script: [`scripts/powershell/New-Users.ps1`](../scripts/powershell/New-Users.ps1), CSV: [`users.example.csv`](../scripts/powershell/users.example.csv).
 
-| Choix | Raison |
+| Choice | Reason |
 |---|---|
-| Mot de passe demandé à l'exécution (`Read-Host -AsSecureString`) | Jamais écrit dans le script ni le CSV |
-| `ChangePasswordAtLogon` | L'administrateur ne connaît pas le mot de passe final |
-| Vérification d'existence | Idempotent : relançable sans doublon |
-| `try/catch` + `-ErrorAction Stop` | « Cree » affiché uniquement en cas de succès réel |
-| Splatting (`@params`) | Lisibilité |
+| Password prompted at runtime (`Read-Host -AsSecureString`) | Never written in the script or the CSV |
+| `ChangePasswordAtLogon` | The administrator never knows the final password |
+| Existence check | Idempotent: can be re-run without duplicates |
+| `try/catch` + `-ErrorAction Stop` | "Created" only shown on real success |
+| Splatting (`@params`) | Readability |
 
-Première version : le script affichait « Cree » malgré des erreurs `Directory object not found` (OU absentes). Par défaut, PowerShell affiche les erreurs non bloquantes puis continue. Un script qui annonce un succès sans le vérifier est dangereux.
+First version: the script printed "Created" despite `Directory object not found` errors (missing OUs). By default, PowerShell prints non-terminating errors and carries on. A script that reports success without checking it is dangerous.
 
-Vérifications :
+Checks:
 
 ```powershell
 Get-ADUser -Filter * -SearchBase "OU=Utilisateurs,$root" -Properties Department | Select-Object Name, SamAccountName, Department
 Get-ADGroupMember GG_Compta
-Get-ADGroupMember DL_Partage-Compta_RW      # contient le groupe GG_Compta
+Get-ADGroupMember DL_Partage-Compta_RW      # contains the GG_Compta group
 ```
 
-## Améliorations (projet IAM)
+## Improvements (IAM project)
 
-- Mot de passe initial aléatoire et unique par utilisateur.
-- Comptes d'administration séparés dans l'OU `Admins`, LAPS.
+- Random, unique initial password per user.
+- Separate admin accounts in the `Admins` OU, LAPS.

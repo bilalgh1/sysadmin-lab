@@ -1,64 +1,66 @@
 # Architecture
 
-## Réseaux
+## Networks
 
-Le réseau est hérité du projet précédent : un pare-feu OPNsense route et filtre le trafic entre trois segments.
+The network comes from the previous project: an OPNsense firewall routes and filters traffic between three segments.
 
-| Réseau | Plage | Passerelle | Contenu |
+| Network | Range | Gateway | Content |
 |---|---|---|---|
-| LAN / Utilisateurs | 10.10.10.0/24 | 10.10.10.1 | Postes utilisateurs |
-| SERVERS | 10.10.20.0/24 | 10.10.20.1 | DC, serveur Linux |
-| IT / Admin | 10.10.30.0/24 | 10.10.30.1 | Réservé à l'administration |
+| LAN / Users | 10.10.10.0/24 | 10.10.10.1 | User workstations |
+| SERVERS | 10.10.20.0/24 | 10.10.20.1 | DC, Linux server |
+| IT / Admin | 10.10.30.0/24 | 10.10.30.1 | Reserved for administration |
 
-Les postes utilisateurs n'ont **qu'une seule carte réseau**. Une machine branchée sur deux segments servirait de pont et contournerait le filtrage d'OPNsense.
+User workstations have **a single network adapter**. A machine connected to two segments would act as a bridge and bypass OPNsense filtering.
 
 ## Machines
 
-| Machine | Système | Rôles | Adresse | Ressources |
+| Machine | OS | Roles | Address | Resources |
 |---|---|---|---|---|
-| OPNsense | OPNsense | Pare-feu, routage, relais DHCP vers le DC | .1 sur chaque réseau | 2 Go |
-| DC (`WIN-A5T5IRJE99D`) | Windows Server | AD DS (`company.local`), DNS, DHCP, partage `Partages`, Windows Server Backup | 10.10.20.20 (fixe) | 4 Go, disque système 40 Go + disque de sauvegarde 30 Go |
-| SRV-UBUNTU1 | Ubuntu 24.04 LTS | Nginx, SSH | 10.10.20.10 (fixe) | 2 Go, 10 Go |
-| PC-USER1 | Windows 11 Enterprise (évaluation) | Poste membre du domaine | DHCP | 4 Go, 64 Go, TPM 2.0 + Secure Boot |
+| OPNsense | OPNsense | Firewall, routing, DHCP relay to the DC | .1 on each network | 2 GB |
+| DC (`WIN-A5T5IRJE99D`) | Windows Server | AD DS (`company.local`), DNS, DHCP, `Partages` share, Windows Server Backup | 10.10.20.20 (static) | 4 GB, 40 GB system disk + 30 GB backup disk |
+| SRV-UBUNTU1 | Ubuntu 24.04 LTS | Nginx, SSH | 10.10.20.10 (static) | 2 GB, 10 GB |
+| PC-USER1 | Windows 11 Enterprise (evaluation) | Domain member workstation | DHCP | 4 GB, 64 GB, TPM 2.0 + Secure Boot |
 
-## Services d'infrastructure
+## Infrastructure services
 
 ### DNS
 
 ```
-Postes et serveurs ──▶ DC (10.10.20.20) ──▶ redirecteurs 1.1.1.1 / 9.9.9.9
-                       autorité sur company.local
+Workstations and servers ──▶ DC (10.10.20.20) ──▶ forwarders 1.1.1.1 / 9.9.9.9
+                             authoritative for company.local
 ```
 
-- Toutes les machines du domaine interrogent **le DC**, qui seul connaît la zone `company.local`.
-- Le DC transmet les noms Internet à deux redirecteurs publics.
-- Le serveur Linux, non membre du domaine, a un enregistrement A créé manuellement.
+- Every domain machine queries **the DC**, the only server that knows the `company.local` zone.
+- The DC forwards Internet names to two public resolvers.
+- The Linux server, not a domain member, has a manually created A record.
 
 ### DHCP
 
-- Serveur DHCP Windows sur le DC, **autorisé dans l'AD**.
-- Étendue `LAN-Users` : 10.10.10.100 à .200, bail 8 jours, passerelle 10.10.10.1, DNS 10.10.20.20, suffixe `company.local`.
-- OPNsense **relaie** les diffusions DHCP du LAN vers le DC (le DHCP d'OPNsense est désactivé sur ce réseau : un seul serveur par réseau).
+- Windows DHCP server on the DC, **authorized in AD**.
+- `LAN-Users` scope: 10.10.10.100 to .200, 8-day lease, gateway 10.10.10.1, DNS 10.10.20.20, suffix `company.local`.
+- OPNsense **relays** DHCP broadcasts from the LAN to the DC (OPNsense's own DHCP is disabled on that network: one server per network).
 
-### Temps
+### Time
 
-- Le DC se synchronise sur `0.fr.pool.ntp.org` et `1.fr.pool.ntp.org` et sert de référence au domaine (Kerberos tolère 5 minutes d'écart).
-- Fuseau du DC : Romance Standard Time. Serveur Linux : UTC (logs comparables entre serveurs).
+- The DC syncs with `0.fr.pool.ntp.org` and `1.fr.pool.ntp.org` and is the time reference for the domain (Kerberos tolerates 5 minutes of skew).
+- DC time zone: Romance Standard Time. Linux server: UTC (logs comparable across servers).
 
-## Flux nécessaires entre le LAN et le DC
+## Required flows between the LAN and the DC
 
-Vérifiés avec `Test-NetConnection` avant la jonction au domaine.
+Checked with `Test-NetConnection` before the domain join.
 
-| Port | Protocole | Usage |
+| Port | Protocol | Use |
 |---|---|---|
-| 53 | DNS | Résolution, localisation du DC (enregistrements SRV) |
-| 88 | Kerberos | Authentification |
-| 135 + ports dynamiques | RPC | Jonction, gestion |
-| 389 | LDAP | Interrogation de l'annuaire |
-| 445 | SMB | SYSVOL (GPO), partages de fichiers |
-| 67/68 | DHCP | Via le relais OPNsense |
+| 53 | DNS | Name resolution, DC location (SRV records) |
+| 88 | Kerberos | Authentication |
+| 135 + dynamic ports | RPC | Domain join, management |
+| 389 | LDAP | Directory queries |
+| 445 | SMB | SYSVOL (GPOs), file shares |
+| 67/68 | DHCP | Through the OPNsense relay |
 
-## Annuaire
+## Directory
+
+OU and group names are in French, as in the lab (Utilisateurs = Users, Ordinateurs = Computers, Postes = Workstations, Groupes = Groups, Compta = Accounting, RH = HR).
 
 ```
 company.local
@@ -68,7 +70,7 @@ company.local
     │   ├── RH       (claire.petit, emma.leroy)
     │   └── IT       (david.moreau)
     ├── Ordinateurs
-    │   ├── Postes   (PC-USER1, destination par défaut via redircmp)
+    │   ├── Postes   (PC-USER1, default destination via redircmp)
     │   └── Serveurs
     ├── Groupes      (GG_Compta, GG_RH, GG_IT, DL_Partage-Compta_RW, DL_Partage-Compta_R, DL_Partage-RH_RW)
     └── Admins
